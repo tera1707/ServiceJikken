@@ -109,6 +109,9 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <PostBuildEvent>
+      <Command>xcopy $(SolutionDir)InstallMyServiceOnTargetPC.bat $(OutputPath) /Y /I</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -124,6 +127,9 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <PostBuildEvent>
+      <Command>xcopy $(SolutionDir)InstallMyServiceOnTargetPC.bat $(OutputPath) /Y /I</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="ServiceJikken.h" />
@@ -131,6 +137,13 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="serviceJikken1.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\InstallMyServiceOnDevelopPC.bat" />
+    <None Include="..\InstallMyServiceOnTargetPC.bat">
+      <DeploymentContent>false</DeploymentContent>
+      <FileType>Document</FileType>
+    </None>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
