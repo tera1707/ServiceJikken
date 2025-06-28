@@ -11,20 +11,22 @@ REM 管理者権限で実行したい処理 ここから
 cd %~dp0
 
 set SERVICENAME="ServiceJikkenSvcName"
+set SERVICEEXENAME=ServiceJikken.exe
 set SERVICEDISPNAME=%SERVICENAME%
-set BINPATH=%~dp0ServiceJikken.exe
+set BINPATH=%~dp0%SERVICEEXENAME%
 set DISCRIPTION="Service Jikken Svc Description..."
 
 echo -サービスのプロセスを無理やり終了させる
 echo %BINPATH%
-taskkill /f /im %BINPATH%
+taskkill /f /im "%SERVICEEXENAME%"
 
 echo -サービスをアンインストール
 sc delete %SERVICENAME%
 
 echo -サービスをインストール
 rem 試した限り、binPathにはフルパスを指定しないとうまくいかない
-sc create %SERVICENAME% start=auto binPath= %BINPATH% DisplayName= %SERVICEDISPNAME%
+echo %BINPATH%
+sc create "%SERVICENAME%" start=auto binPath= "%BINPATH%" DisplayName= "%SERVICEDISPNAME%"
 
 echo -説明文を編集
 sc description %SERVICENAME% %DISCRIPTION%
