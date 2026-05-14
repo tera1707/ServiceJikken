@@ -150,6 +150,8 @@ VOID WINAPI SvcMain(DWORD dwArgc, LPTSTR* lpszArgv)
 
     // サービスとしての主たる処理を行う
     SvcMainLoop(dwArgc, lpszArgv);
+
+    SvcEnd(dwArgc, lpszArgv);
 }
 
 VOID SvcInit(DWORD dwArgc, LPTSTR* lpszArgv)
