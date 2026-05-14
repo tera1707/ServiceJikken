@@ -2,10 +2,12 @@
 #include <tchar.h>
 #include <strsafe.h>
 #include <string>
+#include <shlwapi.h>
 #include "serviceJikken1.h"
 
 #pragma comment(lib, "advapi32.lib")
 #pragma comment(lib, "Wtsapi32.lib")
+#pragma comment(lib, "Shlwapi.lib")
 
 #define SVCNAME TEXT("SvcName")
 
@@ -25,6 +27,12 @@ VOID SvcEnd(DWORD, LPTSTR*);
 VOID GetSessionInfo(DWORD sessionId);
 // 現在ログイン中のユーザーを確認してログ出力する関数
 VOID LogCurrentLoggedInUsers();
+// 画面表示を90度回転させる関数
+VOID RotateDisplay90Degrees();
+// ユーザーセッションでプロセスを起動する関数
+BOOL LaunchProcessInUserSession(DWORD sessionId, LPWSTR commandLine);
+// ログオン画面でプロセスを起動する関数
+BOOL LaunchProcessOnLogonScreen();
 
 // 本プロセスのエントリポイント(メインスレッド)
 // ServiceControlのループは、このスレッドで行われる
@@ -84,6 +92,9 @@ DWORD WINAPI SvcCtrlHandler(DWORD dwControl, DWORD dwEventType, LPVOID lpEventDa
 
         // 現在ログイン中のユーザーを確認してログ出力
         LogCurrentLoggedInUsers();
+
+        // 画面表示を90度回転（ユーザーセッションでDisplayRotator.exeを起動）
+        RotateDisplay90Degrees();
 
         break;
     }
@@ -201,6 +212,11 @@ VOID SvcInit(DWORD dwArgc, LPTSTR* lpszArgv)
 
     // 現在ログイン中のユーザーを確認してログ出力
     LogCurrentLoggedInUsers();
+
+
+
+
+
 
 
     // 初期化が終了したので、SCMに「サービスの開始」を報告する
@@ -399,3 +415,341 @@ VOID LogCurrentLoggedInUsers()
         OutputLogToCChokka(L"  Failed to enumerate sessions. Error: " + std::to_wstring(GetLastError()));
     }
 }
+
+// 画面を1回90度回転させる内部関数
+BOOL RotateDisplayOnce()
+{
+    DEVMODE devMode;
+    ZeroMemory(&devMode, sizeof(devMode));
+    devMode.dmSize = sizeof(devMode);
+
+    // プライマリディスプレイの現在の設定を取得
+    if (!EnumDisplaySettings(NULL, ENUM_CURRENT_SETTINGS, &devMode))
+    {
+        OutputLogToCChokka(L"  Failed to get current display settings. Error: " + std::to_wstring(GetLastError()));
+        return FALSE;
+    }
+
+    // 現在の向きを取得
+    DWORD currentOrientation = devMode.dmDisplayOrientation;
+
+    // 90度回転させる（現在の向きから+90度）
+    DWORD newOrientation;
+    switch (currentOrientation)
+    {
+    case DMDO_DEFAULT:  // 0度
+        newOrientation = DMDO_90;
+        break;
+    case DMDO_90:       // 90度
+        newOrientation = DMDO_180;
+        break;
+    case DMDO_180:      // 180度
+        newOrientation = DMDO_270;
+        break;
+    case DMDO_270:      // 270度
+        newOrientation = DMDO_DEFAULT;
+        break;
+    default:
+        newOrientation = DMDO_90;
+        break;
+    }
+
+    // 新しい向きを設定（幅と高さは指定しない - システムが自動で調整）
+    devMode.dmDisplayOrientation = newOrientation;
+    devMode.dmFields = DM_DISPLAYORIENTATION;
+
+    OutputLogToCChokka(L"  Rotating display from " + std::to_wstring(currentOrientation) +
+        L" to " + std::to_wstring(newOrientation));
+
+    // ディスプレイ設定を変更
+    // CDS_RESET: 即座に変更を適用（レジストリには保存しない）
+    LONG result = ChangeDisplaySettingsEx(NULL, &devMode, NULL, CDS_RESET, NULL);
+
+    switch (result)
+    {
+    case DISP_CHANGE_SUCCESSFUL:
+        OutputLogToCChokka(L"  Display rotation successful");
+        return TRUE;
+    case DISP_CHANGE_RESTART:
+        OutputLogToCChokka(L"  Display rotation requires restart");
+        return FALSE;
+    case DISP_CHANGE_FAILED:
+        OutputLogToCChokka(L"  Display rotation failed");
+        return FALSE;
+    case DISP_CHANGE_BADMODE:
+        OutputLogToCChokka(L"  Display rotation failed: Bad mode");
+        return FALSE;
+    case DISP_CHANGE_NOTUPDATED:
+        OutputLogToCChokka(L"  Display rotation failed: Not updated");
+        return FALSE;
+    case DISP_CHANGE_BADFLAGS:
+        OutputLogToCChokka(L"  Display rotation failed: Bad flags");
+        return FALSE;
+    case DISP_CHANGE_BADPARAM:
+        OutputLogToCChokka(L"  Display rotation failed: Bad parameter");
+        return FALSE;
+    default:
+        OutputLogToCChokka(L"  Display rotation unknown result: " + std::to_wstring(result));
+        return FALSE;
+    }
+}
+
+// 5秒おきに4回、90度回転させる関数（ユーザーセッションでDisplayRotator.exeを起動）
+VOID RotateDisplay90Degrees()
+{
+    OutputLogToCChokka(L"  Starting display rotation by launching DisplayRotator.exe in user session");
+
+    // アクティブなユーザーセッションを見つける
+    PWTS_SESSION_INFO pSessionInfo = NULL;
+    DWORD sessionCount = 0;
+    DWORD targetSessionId = 0xFFFFFFFF; // 無効な値で初期化
+    BOOL foundActiveSession = FALSE;
+
+    if (WTSEnumerateSessions(WTS_CURRENT_SERVER_HANDLE, 0, 1, &pSessionInfo, &sessionCount))
+    {
+        for (DWORD i = 0; i < sessionCount; i++)
+        {
+            if (pSessionInfo[i].State == WTSActive)
+            {
+                LPWSTR pUserName = NULL;
+                DWORD bytesReturned = 0;
+
+                if (WTSQuerySessionInformation(
+                    WTS_CURRENT_SERVER_HANDLE,
+                    pSessionInfo[i].SessionId,
+                    WTSUserName,
+                    &pUserName,
+                    &bytesReturned))
+                {
+                    if (pUserName != NULL && wcslen(pUserName) > 0)
+                    {
+                        targetSessionId = pSessionInfo[i].SessionId;
+                        foundActiveSession = TRUE;
+                        OutputLogToCChokka(L"  Found active user session: SessionID=" + std::to_wstring(targetSessionId) + L", User=" + std::wstring(pUserName));
+                    }
+                    WTSFreeMemory(pUserName);
+                }
+
+                if (foundActiveSession)
+                    break;
+            }
+        }
+
+        WTSFreeMemory(pSessionInfo);
+    }
+
+    if (!foundActiveSession)
+    {
+        OutputLogToCChokka(L"  No active user session found. Trying to launch on Logon screen instead.");
+
+        // ログオン画面でDisplayRotatorを起動
+        if (LaunchProcessOnLogonScreen())
+        {
+            OutputLogToCChokka(L"  DisplayRotator.exe launched on Logon screen successfully");
+        }
+        else
+        {
+            OutputLogToCChokka(L"  Failed to launch DisplayRotator.exe on Logon screen");
+        }
+
+        return;
+    }
+
+    // DisplayRotator.exeのパス（サービスと同じディレクトリにあると仮定）
+    WCHAR exePath[MAX_PATH];
+    GetModuleFileName(NULL, exePath, MAX_PATH);
+    PathRemoveFileSpec(exePath);
+    wcscat_s(exePath, L"\\DisplayRotator.exe");
+
+    // コマンドライン（引数として回転回数を渡す）
+    WCHAR commandLine[MAX_PATH];
+    wsprintf(commandLine, L"\"%s\" 4", exePath);
+
+    OutputLogToCChokka(L"  Launching: " + std::wstring(commandLine));
+
+    // ユーザーセッションでプロセスを起動
+    if (LaunchProcessInUserSession(targetSessionId, commandLine))
+    {
+        OutputLogToCChokka(L"  DisplayRotator.exe launched successfully");
+    }
+    else
+    {
+        OutputLogToCChokka(L"  Failed to launch DisplayRotator.exe");
+    }
+}
+
+// ユーザーセッションでプロセスを起動する関数
+BOOL LaunchProcessInUserSession(DWORD sessionId, LPWSTR commandLine)
+{
+    HANDLE hUserToken = NULL;
+    HANDLE hDuplicatedToken = NULL;
+    STARTUPINFO si;
+    PROCESS_INFORMATION pi;
+    BOOL result = FALSE;
+
+    ZeroMemory(&si, sizeof(si));
+    si.cb = sizeof(si);
+    si.lpDesktop = (LPWSTR)L"winsta0\\default"; // ユーザーのデスクトップを指定
+
+    ZeroMemory(&pi, sizeof(pi));
+
+    // セッションのユーザートークンを取得
+    if (!WTSQueryUserToken(sessionId, &hUserToken))
+    {
+        OutputLogToCChokka(L"  WTSQueryUserToken failed. Error: " + std::to_wstring(GetLastError()));
+        return FALSE;
+    }
+
+    // トークンを複製（プライマリトークンとして）
+    SECURITY_ATTRIBUTES sa;
+    sa.nLength = sizeof(sa);
+    sa.lpSecurityDescriptor = NULL;
+    sa.bInheritHandle = FALSE;
+
+    if (!DuplicateTokenEx(
+        hUserToken,
+        MAXIMUM_ALLOWED,
+        &sa,
+        SecurityIdentification,
+        TokenPrimary,
+        &hDuplicatedToken))
+    {
+        OutputLogToCChokka(L"  DuplicateTokenEx failed. Error: " + std::to_wstring(GetLastError()));
+        CloseHandle(hUserToken);
+        return FALSE;
+    }
+
+    // プロセスを起動
+    if (CreateProcessAsUser(
+        hDuplicatedToken,
+        NULL,
+        commandLine,
+        NULL,
+        NULL,
+        FALSE,
+        CREATE_NEW_CONSOLE | NORMAL_PRIORITY_CLASS,
+        NULL,
+        NULL,
+        &si,
+        &pi))
+    {
+        OutputLogToCChokka(L"  CreateProcessAsUser succeeded. ProcessID: " + std::to_wstring(pi.dwProcessId));
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        result = TRUE;
+    }
+    else
+    {
+        OutputLogToCChokka(L"  CreateProcessAsUser failed. Error: " + std::to_wstring(GetLastError()));
+        result = FALSE;
+    }
+
+    CloseHandle(hDuplicatedToken);
+    CloseHandle(hUserToken);
+
+    return result;
+}
+
+// ログオン画面（winsta0\Winlogon）でDisplayRotatorを起動する関数
+// 警告: この関数はセキュアデスクトップでプロセスを実行するため、セキュリティリスクがあります
+BOOL LaunchProcessOnLogonScreen()
+{
+    HANDLE hToken = NULL;
+    HANDLE hDuplicatedToken = NULL;
+    STARTUPINFO si;
+    PROCESS_INFORMATION pi;
+    BOOL result = FALSE;
+
+    ZeroMemory(&si, sizeof(si));
+    si.cb = sizeof(si);
+
+    // 重要: ログオン画面のデスクトップを指定
+    si.lpDesktop = (LPWSTR)L"winsta0\\Winlogon";
+
+    ZeroMemory(&pi, sizeof(pi));
+
+    OutputLogToCChokka(L"  Attempting to launch DisplayRotator on Logon screen (winsta0\\Winlogon)");
+
+    // 現在のプロセス（サービス）のトークンを取得
+    // サービスはSYSTEM権限で動作しているため、このトークンを使用する
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ALL_ACCESS, &hToken))
+    {
+        OutputLogToCChokka(L"  OpenProcessToken failed. Error: " + std::to_wstring(GetLastError()));
+        return FALSE;
+    }
+
+    // トークンを複製
+    SECURITY_ATTRIBUTES sa;
+    sa.nLength = sizeof(sa);
+    sa.lpSecurityDescriptor = NULL;
+    sa.bInheritHandle = FALSE;
+
+    if (!DuplicateTokenEx(
+        hToken,
+        MAXIMUM_ALLOWED,
+        &sa,
+        SecurityIdentification,
+        TokenPrimary,
+        &hDuplicatedToken))
+    {
+        OutputLogToCChokka(L"  DuplicateTokenEx failed. Error: " + std::to_wstring(GetLastError()));
+        CloseHandle(hToken);
+        return FALSE;
+    }
+
+    // DisplayRotator.exeのパス
+    WCHAR exePath[MAX_PATH];
+    GetModuleFileName(NULL, exePath, MAX_PATH);
+    PathRemoveFileSpec(exePath);
+    wcscat_s(exePath, L"\\DisplayRotator.exe");
+
+    // コマンドライン（回転回数を指定）
+    WCHAR commandLine[MAX_PATH];
+    wsprintf(commandLine, L"\"%s\" 4", exePath);
+
+    OutputLogToCChokka(L"  Launching on Logon screen: " + std::wstring(commandLine));
+
+    // プロセスを起動
+    if (CreateProcessAsUser(
+        hDuplicatedToken,
+        NULL,
+        commandLine,
+        NULL,
+        NULL,
+        FALSE,
+        CREATE_NEW_CONSOLE | NORMAL_PRIORITY_CLASS,
+        NULL,
+        NULL,
+        &si,
+        &pi))
+    {
+        OutputLogToCChokka(L"  CreateProcessAsUser on Logon screen succeeded. ProcessID: " + std::to_wstring(pi.dwProcessId));
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        result = TRUE;
+    }
+    else
+    {
+        DWORD error = GetLastError();
+        OutputLogToCChokka(L"  CreateProcessAsUser on Logon screen failed. Error: " + std::to_wstring(error));
+
+        // エラー1314は「要求された操作には、このプロセスが保持していない特権が必要です」
+        // エラー5は「アクセスが拒否されました」
+        if (error == 1314)
+        {
+            OutputLogToCChokka(L"  Error 1314: Insufficient privileges. Service may need SE_TCB_NAME privilege.");
+        }
+        else if (error == 5)
+        {
+            OutputLogToCChokka(L"  Error 5: Access denied. Logon desktop may be restricted.");
+        }
+
+        result = FALSE;
+    }
+
+    CloseHandle(hDuplicatedToken);
+    CloseHandle(hToken);
+
+    return result;
+}
+
