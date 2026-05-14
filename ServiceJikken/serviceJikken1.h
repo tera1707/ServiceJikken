@@ -5,6 +5,7 @@
 #include <time.h>
 #include <thread>   // std::this_thread::get_id()を使うのに必要
 #include <fstream>  // std::wofstreamを使うのに必要
+#include <sstream>  // std::wostringstream を使うのに必要
 #include <map>
 #include <windows.h> // SERVICE_CONTROL_XXX マクロ用
 #include <WtsApi32.h> // WTS_XXX マクロ用
@@ -84,8 +85,18 @@ void OutputLogToCChokka(std::wstring txt)
     wchar_t buf[256] = { 0 };
     wcsftime(buf, 256, L"%Y/%m/%d %H:%M:%S ", &tmv);
 
-    // 現在のスレッドIDを出力
+    // 現在のスレッドIDを取得して文字列化
     auto thId = std::this_thread::get_id();
+    std::wostringstream oss;
+    oss << thId;
+    std::wstring threadIdStr = oss.str();
+
+    // スレッドIDを5桁で右詰め（半角スペースで埋める）
+    std::wstring formattedThreadId = threadIdStr;
+    if (formattedThreadId.length() < 5)
+    {
+        formattedThreadId = std::wstring(5 - formattedThreadId.length(), L' ') + formattedThreadId;
+    }
 
     // ログ出力
     std::wstring logtxt = buf + txt;
@@ -98,8 +109,8 @@ void OutputLogToCChokka(std::wstring txt)
         return;
     }
     // 現在時刻とスレッドIDを付けたログをファイルに書き込み
-    ofs << thId << L"  " << logtxt.c_str() << std::endl;
-    std::wcout << thId << L"  " << logtxt.c_str() << std::endl;
+    ofs << formattedThreadId << L"  " << logtxt.c_str() << std::endl;
+    std::wcout << formattedThreadId << L"  " << logtxt.c_str() << std::endl;
     // ファイル閉じる
     ofs.close();
 }
