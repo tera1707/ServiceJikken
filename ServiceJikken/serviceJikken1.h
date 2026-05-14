@@ -92,7 +92,7 @@ void OutputLogToCChokka(std::wstring txt)
 
     // ファイルを開く(なければ作成)
     // C直下のファイルに書くにはexe実行時に管理者権限にする必要アリ
-    std::wofstream ofs(L"C:\\mylog.log", std::ios::app);
+    std::wofstream ofs(L"C:\\Log\\ServiceJikken.log", std::ios::app);
     if (!ofs)
     {
         return;
