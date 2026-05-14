@@ -13,6 +13,9 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="util">
+      <UniqueIdentifier>{4b99c54c-95ec-40c9-a0b1-548c8c1ade30}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="serviceJikken1.h">
@@ -36,6 +39,21 @@
     </None>
     <None Include="..\UnInstallMyServiceOnTargetPC.bat">
       <Filter>リソース ファイル</Filter>
+    </None>
+    <None Include="util\InstallServiceTest.bat">
+      <Filter>util</Filter>
+    </None>
+    <None Include="util\StartServiceTest.bat">
+      <Filter>util</Filter>
+    </None>
+    <None Include="util\StopServiceTest.bat">
+      <Filter>util</Filter>
+    </None>
+    <None Include="util\TailLog.bat">
+      <Filter>util</Filter>
+    </None>
+    <None Include="util\UninstallServiceTest.bat">
+      <Filter>util</Filter>
     </None>
   </ItemGroup>
 </Project>

@@ -71,7 +71,7 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\</OutDir>
+    <OutDir>\\192.168.111.111\test\svc</OutDir>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -113,7 +113,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy $(SolutionDir)InstallMyServiceOnTargetPC.bat $(OutputPath) /Y /I</Command>
+      <Command>xcopy $(ProjectDir)util\*.bat $(OutputPath) /Y /I</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -148,6 +148,11 @@
       <FileType>Document</FileType>
     </None>
     <None Include="..\UnInstallMyServiceOnTargetPC.bat" />
+    <None Include="util\InstallServiceTest.bat" />
+    <None Include="util\StartServiceTest.bat" />
+    <None Include="util\StopServiceTest.bat" />
+    <None Include="util\TailLog.bat" />
+    <None Include="util\UninstallServiceTest.bat" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

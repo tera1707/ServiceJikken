@@ -1,3 +1,4 @@
+
 @set @dummy=0/*
 @echo off
 NET FILE 1>NUL 2>NUL
@@ -8,18 +9,22 @@ if "%ERRORLEVEL%" neq "0" (
 
 REM 管理者権限で実行したい処理 ここから
 
-cd %~dp0
-
 set SERVICENAME="ServiceJikkenSvcName"
-set SERVICEEXENAME=ServiceJikken.exe
 set SERVICEDISPNAME=%SERVICENAME%
+set BINPATH=%~dp0\ServiceJikken.exe
+set DISCRIPTION="Device Resurrection Service"
 
-echo -サービスのプロセスを無理やり終了させる
-echo %BINPATH%
-taskkill /f /im "%SERVICEEXENAME%"
+rem サービスのプロセスを無理やり終了させる
+taskkill /f /im ServiceJikken.exe
+timeout /t 1 /nobreak > nul
 
-echo -サービスをアンインストール
+rem サービスをアンインストール
 sc delete %SERVICENAME%
+timeout /t 1 /nobreak > nul
+
+rem サービスをストップ
+rem sc stop %SERVICENAME%
+rem timeout /t 1 /nobreak > nul
 
 pause
 

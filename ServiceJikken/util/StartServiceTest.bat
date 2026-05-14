@@ -1,3 +1,4 @@
+
 @set @dummy=0/*
 @echo off
 NET FILE 1>NUL 2>NUL
@@ -8,33 +9,19 @@ if "%ERRORLEVEL%" neq "0" (
 
 REM 管理者権限で実行したい処理 ここから
 
-cd %~dp0
-
 set SERVICENAME="ServiceJikkenSvcName"
-set SERVICEEXENAME=ServiceJikken.exe
 set SERVICEDISPNAME=%SERVICENAME%
-set BINPATH=%~dp0x64\Debug\%SERVICEEXENAME%
-set DISCRIPTION="Service Jikken Svc Description..."
+set BINPATH=%~dp0\ServiceJikken.exe
+set DISCRIPTION="Device Resurrection Service"
 
-echo -サービスのプロセスを無理やり終了させる
-echo %BINPATH%
-taskkill /f /im "%SERVICEEXENAME%"
-
-echo -サービスをアンインストール
-sc delete %SERVICENAME%
-
-echo -サービスをインストール
-rem 試した限り、binPathにはフルパスを指定しないとうまくいかない
-echo %BINPATH%
-sc create "%SERVICENAME%" start=auto binPath= "%BINPATH%" DisplayName= "%SERVICEDISPNAME%"
-
-echo -説明文を編集
-sc description %SERVICENAME% %DISCRIPTION%
-
-echo -サービスをスタート
+rem サービスをスタート
 rem sc start %SERVICENAME%
 net start %SERVICENAME%
-pause
+timeout /t 3 /nobreak > nul
+
+rem サービスをストップ
+rem sc stop %SERVICENAME%
+rem timeout /t 1 /nobreak > nul
 
 REM 管理者権限で実行したい処理 ここまで
 
