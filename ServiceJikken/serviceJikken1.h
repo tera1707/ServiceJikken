@@ -75,7 +75,7 @@ const std::map<DWORD, std::wstring> SessionScMap = {
 };
 
 // ログをCドライブ直下に残すDEBUG用関数
-void OutputLogToCChokka(std::wstring txt)
+inline void OutputLogToCChokka(std::wstring txt)
 {
     //FILE* fp = NULL;
     auto t = time(nullptr);
@@ -114,4 +114,5 @@ void OutputLogToCChokka(std::wstring txt)
     // ファイル閉じる
     ofs.close();
 }
+
 

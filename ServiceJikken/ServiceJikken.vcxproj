@@ -137,9 +137,11 @@
   <ItemGroup>
     <ClInclude Include="ServiceJikken.h" />
     <ClInclude Include="serviceJikken1.h" />
+    <ClInclude Include="SessionInfo.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="serviceJikken1.cpp" />
+    <ClCompile Include="SessionInfo.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\InstallMyServiceOnDevelopPC.bat" />
