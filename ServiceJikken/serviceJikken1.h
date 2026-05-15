@@ -74,6 +74,18 @@ const std::map<DWORD, std::wstring> SessionScMap = {
     { WTS_SESSION_TERMINATE,      L"WTS_SESSION_TERMINATE" }
 };
 
+// DeviceEvent を std::map に追加
+const std::map<DWORD, std::wstring> DeviceEventMap = {
+    { DBT_DEVICEARRIVAL,          L"DBT_DEVICEARRIVAL" },
+    { DBT_DEVICEQUERYREMOVE,      L"DBT_DEVICEQUERYREMOVE" },
+    { DBT_DEVICEQUERYREMOVEFAILED,L"DBT_DEVICEQUERYREMOVEFAILED" },
+    { DBT_DEVICEREMOVEPENDING,    L"DBT_DEVICEREMOVEPENDING" },
+    { DBT_DEVICEREMOVECOMPLETE,   L"DBT_DEVICEREMOVECOMPLETE" },
+    { DBT_DEVICETYPESPECIFIC,     L"DBT_DEVICETYPESPECIFIC" },
+    { DBT_CUSTOMEVENT,            L"DBT_CUSTOMEVENT" },
+    { DBT_DEVNODES_CHANGED,       L"DBT_DEVNODES_CHANGED" }
+};
+
 // ログをCドライブ直下に残すDEBUG用関数
 inline void OutputLogToCChokka(std::wstring txt)
 {
