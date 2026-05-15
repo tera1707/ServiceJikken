@@ -2,10 +2,15 @@
 #include <tchar.h>
 #include <strsafe.h>
 #include <string>
+#include <shlwapi.h>
+#include <vector>
+#include <tuple>
+#include <optional>
 #include "serviceJikken1.h"
 
 #pragma comment(lib, "advapi32.lib")
 #pragma comment(lib, "Wtsapi32.lib")
+#pragma comment(lib, "Shlwapi.lib")
 
 #define SVCNAME TEXT("SvcName")
 
@@ -23,8 +28,121 @@ VOID SvcEnd(DWORD, LPTSTR*);
 
 // セッション情報取得関数
 VOID GetSessionInfo(DWORD sessionId);
-// 現在ログイン中のユーザーを確認してログ出力する関数
-VOID LogCurrentLoggedInUsers();
+// セッションのユーザー名を取得する関数
+std::wstring GetSessionUserName(DWORD sessionId);
+// セッションの状態を取得する関数
+std::wstring GetSessionState(DWORD sessionId);
+// 現在ログイン中のユーザーを確認して情報を返す関数
+std::vector<std::tuple<std::optional<std::wstring>, DWORD, std::wstring>> GetLoggedInUsers();
+// 画面表示を90度回転させる関数
+VOID RotateDisplay90Degrees();
+// ユーザーセッションでプロセスを起動する関数
+BOOL LaunchProcessInUserSession(DWORD sessionId, LPWSTR commandLine);
+// ログオン画面でプロセスを起動する関数
+BOOL LaunchProcessOnLogonScreen();
+
+
+// 現在ログイン中のユーザーを確認して情報を返す関数
+// 戻り値: std::vector<std::tuple<ユーザー名(optional), セッションID, 状態>>
+// ユーザーがいないセッションはユーザー名部分がstd::nullopt
+std::vector<std::tuple<std::optional<std::wstring>, DWORD, std::wstring>> GetLoggedInUsers()
+{
+    PWTS_SESSION_INFO pSessionInfo = NULL;
+    DWORD sessionCount = 0;
+
+    std::vector<std::tuple<std::optional<std::wstring>, DWORD, std::wstring>> sessions;
+
+    if (!WTSEnumerateSessions(WTS_CURRENT_SERVER_HANDLE, 0, 1, &pSessionInfo, &sessionCount))
+    {
+        OutputLogToCChokka(L"  Failed to enumerate sessions. Error: " + std::to_wstring(GetLastError()));
+        return sessions; // 空のベクターを返す
+    }
+
+    for (DWORD i = 0; i < sessionCount; i++)
+    {
+        if (pSessionInfo[i].State == WTSActive || pSessionInfo[i].State == WTSDisconnected)
+        {
+            std::wstring userName = GetSessionUserName(pSessionInfo[i].SessionId);
+            std::wstring sessionState = GetSessionState(pSessionInfo[i].SessionId);
+
+            // ユーザー名が空の場合はnulloptにする
+            std::optional<std::wstring> optUserName;
+            if (!userName.empty())
+            {
+                optUserName = userName;
+            }
+
+            sessions.push_back(std::make_tuple(optUserName, pSessionInfo[i].SessionId, sessionState));
+        }
+    }
+
+    WTSFreeMemory(pSessionInfo);
+
+    return sessions;
+}
+
+// セッションのユーザー名を取得する関数
+std::wstring GetSessionUserName(DWORD sessionId)
+{
+    LPWSTR pBuffer = NULL;
+    DWORD bytesReturned = 0;
+    std::wstring userName = L"";
+
+    if (WTSQuerySessionInformation(
+        WTS_CURRENT_SERVER_HANDLE,
+        sessionId,
+        WTSUserName,
+        &pBuffer,
+        &bytesReturned))
+    {
+        if (pBuffer != NULL && wcslen(pBuffer) > 0)
+        {
+            userName = std::wstring(pBuffer);
+        }
+        WTSFreeMemory(pBuffer);
+    }
+
+    return userName;
+}
+
+// セッションの状態を取得する関数
+std::wstring GetSessionState(DWORD sessionId)
+{
+    LPWSTR pBuffer = NULL;
+    DWORD bytesReturned = 0;
+    std::wstring stateStr = L"";
+
+    if (WTSQuerySessionInformation(
+        WTS_CURRENT_SERVER_HANDLE,
+        sessionId,
+        WTSConnectState,
+        &pBuffer,
+        &bytesReturned))
+    {
+        if (pBuffer != NULL)
+        {
+            WTS_CONNECTSTATE_CLASS state = *(WTS_CONNECTSTATE_CLASS*)pBuffer;
+
+            switch (state)
+            {
+            case WTSActive:       stateStr = L"WTSActive"; break;
+            case WTSConnected:    stateStr = L"WTSConnected"; break;
+            case WTSConnectQuery: stateStr = L"WTSConnectQuery"; break;
+            case WTSShadow:       stateStr = L"WTSShadow"; break;
+            case WTSDisconnected: stateStr = L"WTSDisconnected"; break;
+            case WTSIdle:         stateStr = L"WTSIdle"; break;
+            case WTSListen:       stateStr = L"WTSListen"; break;
+            case WTSReset:        stateStr = L"WTSReset"; break;
+            case WTSDown:         stateStr = L"WTSDown"; break;
+            case WTSInit:         stateStr = L"WTSInit"; break;
+            default:              stateStr = L"Unknown"; break;
+            }
+        }
+        WTSFreeMemory(pBuffer);
+    }
+
+    return stateStr;
+}
 
 // 本プロセスのエントリポイント(メインスレッド)
 // ServiceControlのループは、このスレッドで行われる
@@ -83,7 +201,32 @@ DWORD WINAPI SvcCtrlHandler(DWORD dwControl, DWORD dwEventType, LPVOID lpEventDa
         }
 
         // 現在ログイン中のユーザーを確認してログ出力
-        LogCurrentLoggedInUsers();
+        auto sessions = GetLoggedInUsers();
+        if (!sessions.empty())
+        {
+            std::wstring loggedInUsers;
+            for (const auto& [optUserName, sessionId, state] : sessions)
+            {
+                if (!loggedInUsers.empty())
+                {
+                    loggedInUsers += L", ";
+                }
+
+                if (optUserName.has_value())
+                {
+                    loggedInUsers += optUserName.value() + L"(SessionID:" + std::to_wstring(sessionId) + L", State:" + state + L")";
+                }
+                else
+                {
+                    loggedInUsers += L"(no user)(SessionID:" + std::to_wstring(sessionId) + L", State:" + state + L")";
+                }
+            }
+            OutputLogToCChokka(L"  users: " + loggedInUsers);
+        }
+        else
+        {
+            OutputLogToCChokka(L"  No sessions found");
+        }
 
         break;
     }
@@ -198,7 +341,32 @@ VOID SvcInit(DWORD dwArgc, LPTSTR* lpszArgv)
     }
 
     // 現在ログイン中のセッション情報を取得
-    LogCurrentLoggedInUsers();
+    auto sessions = GetLoggedInUsers();
+    if (!sessions.empty())
+    {
+        std::wstring loggedInUsers;
+        for (const auto& [optUserName, sessionId, state] : sessions)
+        {
+            if (!loggedInUsers.empty())
+            {
+                loggedInUsers += L", ";
+            }
+
+            if (optUserName.has_value())
+            {
+                loggedInUsers += optUserName.value() + L"(SessionID:" + std::to_wstring(sessionId) + L", State:" + state + L")";
+            }
+            else
+            {
+                loggedInUsers += L"(no user)(SessionID:" + std::to_wstring(sessionId) + L", State:" + state + L")";
+            }
+        }
+        OutputLogToCChokka(L"  users: " + loggedInUsers);
+    }
+    else
+    {
+        OutputLogToCChokka(L"  No sessions found");
+    }
 
     // 初期化が終了したので、SCMに「サービスの開始」を報告する
     ReportSvcStatus(SERVICE_RUNNING, NO_ERROR, 0);
@@ -260,126 +428,27 @@ VOID ReportSvcStatus(DWORD dwCurrentState,
 VOID GetSessionInfo(DWORD sessionId)
 {
     std::wstring log = L"";
-    LPWSTR pBuffer = NULL;
-    DWORD bytesReturned = 0;
 
     // セッションIDをログ出力
     log += L"  Session(" + std::to_wstring(sessionId) + L")";
 
     // ユーザー名を取得
-    if (WTSQuerySessionInformation(
-        WTS_CURRENT_SERVER_HANDLE,
-        sessionId,
-        WTSUserName,
-        &pBuffer,
-        &bytesReturned))
+    std::wstring userName = GetSessionUserName(sessionId);
+    if (!userName.empty())
     {
-        if (pBuffer != NULL && wcslen(pBuffer) > 0)
-        {
-            log += L"  User: " + std::wstring(pBuffer);
-        }
-        else
-        {
-            log += L"  User: -";
-        }
-        WTSFreeMemory(pBuffer);
-        pBuffer = NULL;
+        log += L"  User: " + userName;
     }
     else
     {
-        log += L"  Failed to get user name. Error: " + std::to_wstring(GetLastError());
+        log += L"  User: -";
     }
 
     // セッションの状態を取得
-    if (WTSQuerySessionInformation(
-        WTS_CURRENT_SERVER_HANDLE,
-        sessionId,
-        WTSConnectState,
-        &pBuffer,
-        &bytesReturned))
+    std::wstring stateStr = GetSessionState(sessionId);
+    if (!stateStr.empty())
     {
-        if (pBuffer != NULL)
-        {
-            WTS_CONNECTSTATE_CLASS state = *(WTS_CONNECTSTATE_CLASS*)pBuffer;
-            std::wstring stateStr;
-
-            switch (state)
-            {
-            case WTSActive:       stateStr = L"WTSActive"; break;
-            case WTSConnected:    stateStr = L"WTSConnected"; break;
-            case WTSConnectQuery: stateStr = L"WTSConnectQuery"; break;
-            case WTSShadow:       stateStr = L"WTSShadow"; break;
-            case WTSDisconnected: stateStr = L"WTSDisconnected"; break;
-            case WTSIdle:         stateStr = L"WTSIdle"; break;
-            case WTSListen:       stateStr = L"WTSListen"; break;
-            case WTSReset:        stateStr = L"WTSReset"; break;
-            case WTSDown:         stateStr = L"WTSDown"; break;
-            case WTSInit:         stateStr = L"WTSInit"; break;
-            default:              stateStr = L"Unknown"; break;
-            }
-
-            log += L"  State: " + stateStr;
-        }
-        WTSFreeMemory(pBuffer);
-        pBuffer = NULL;
+        log += L"  State: " + stateStr;
     }
 
     OutputLogToCChokka(log);
-}
-
-// 現在ログイン中のユーザーを確認してログ出力する関数
-VOID LogCurrentLoggedInUsers()
-{
-    PWTS_SESSION_INFO pSessionInfo = NULL;
-    DWORD sessionCount = 0;
-
-    if (WTSEnumerateSessions(WTS_CURRENT_SERVER_HANDLE, 0, 1, &pSessionInfo, &sessionCount))
-    {
-        bool hasLoggedInUser = false;
-        std::wstring loggedInUsers;
-
-        for (DWORD i = 0; i < sessionCount; i++)
-        {
-            if (pSessionInfo[i].State == WTSActive || pSessionInfo[i].State == WTSDisconnected)
-            {
-                LPWSTR pUserName = NULL;
-                DWORD bytesReturned = 0;
-
-                if (WTSQuerySessionInformation(
-                    WTS_CURRENT_SERVER_HANDLE,
-                    pSessionInfo[i].SessionId,
-                    WTSUserName,
-                    &pUserName,
-                    &bytesReturned))
-                {
-                    if (pUserName != NULL && wcslen(pUserName) > 0)
-                    {
-                        if (hasLoggedInUser)
-                        {
-                            loggedInUsers += L", ";
-                        }
-                        loggedInUsers += pUserName;
-                        loggedInUsers += L"(" + std::to_wstring(pSessionInfo[i].SessionId) + L")";
-                        hasLoggedInUser = true;
-                    }
-                    WTSFreeMemory(pUserName);
-                }
-            }
-        }
-
-        if (hasLoggedInUser)
-        {
-            OutputLogToCChokka(L"  users: " + loggedInUsers);
-        }
-        else
-        {
-            OutputLogToCChokka(L"  No logged in users found");
-        }
-
-        WTSFreeMemory(pSessionInfo);
-    }
-    else
-    {
-        OutputLogToCChokka(L"  Failed to enumerate sessions. Error: " + std::to_wstring(GetLastError()));
-    }
 }
