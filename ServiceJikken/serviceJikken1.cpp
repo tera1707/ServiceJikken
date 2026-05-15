@@ -197,11 +197,8 @@ VOID SvcInit(DWORD dwArgc, LPTSTR* lpszArgv)
         return;
     }
 
-
-
-    // 現在ログイン中のユーザーを確認してログ出力
+    // 現在ログイン中のセッション情報を取得
     LogCurrentLoggedInUsers();
-
 
     // 初期化が終了したので、SCMに「サービスの開始」を報告する
     ReportSvcStatus(SERVICE_RUNNING, NO_ERROR, 0);
@@ -262,11 +259,12 @@ VOID ReportSvcStatus(DWORD dwCurrentState,
 // セッション情報を取得する関数
 VOID GetSessionInfo(DWORD sessionId)
 {
+    std::wstring log = L"";
     LPWSTR pBuffer = NULL;
     DWORD bytesReturned = 0;
 
     // セッションIDをログ出力
-    OutputLogToCChokka(L"  Session ID: " + std::to_wstring(sessionId));
+    log += L"  Session(" + std::to_wstring(sessionId) + L")";
 
     // ユーザー名を取得
     if (WTSQuerySessionInformation(
@@ -278,34 +276,18 @@ VOID GetSessionInfo(DWORD sessionId)
     {
         if (pBuffer != NULL && wcslen(pBuffer) > 0)
         {
-            OutputLogToCChokka(L"  User Name: " + std::wstring(pBuffer));
+            log += L"  User: " + std::wstring(pBuffer);
         }
         else
         {
-            OutputLogToCChokka(L"  User Name: (none)");
+            log += L"  User: -";
         }
         WTSFreeMemory(pBuffer);
         pBuffer = NULL;
     }
     else
     {
-        OutputLogToCChokka(L"  Failed to get user name. Error: " + std::to_wstring(GetLastError()));
-    }
-
-    // ドメイン名を取得
-    if (WTSQuerySessionInformation(
-        WTS_CURRENT_SERVER_HANDLE,
-        sessionId,
-        WTSDomainName,
-        &pBuffer,
-        &bytesReturned))
-    {
-        if (pBuffer != NULL && wcslen(pBuffer) > 0)
-        {
-            OutputLogToCChokka(L"  Domain Name: " + std::wstring(pBuffer));
-        }
-        WTSFreeMemory(pBuffer);
-        pBuffer = NULL;
+        log += L"  Failed to get user name. Error: " + std::to_wstring(GetLastError());
     }
 
     // セッションの状態を取得
@@ -336,11 +318,13 @@ VOID GetSessionInfo(DWORD sessionId)
             default:              stateStr = L"Unknown"; break;
             }
 
-            OutputLogToCChokka(L"  Session State: " + stateStr);
+            log += L"  State: " + stateStr;
         }
         WTSFreeMemory(pBuffer);
         pBuffer = NULL;
     }
+
+    OutputLogToCChokka(log);
 }
 
 // 現在ログイン中のユーザーを確認してログ出力する関数
@@ -375,7 +359,7 @@ VOID LogCurrentLoggedInUsers()
                             loggedInUsers += L", ";
                         }
                         loggedInUsers += pUserName;
-                        loggedInUsers += L" (SessionID: " + std::to_wstring(pSessionInfo[i].SessionId) + L")";
+                        loggedInUsers += L"(" + std::to_wstring(pSessionInfo[i].SessionId) + L")";
                         hasLoggedInUser = true;
                     }
                     WTSFreeMemory(pUserName);
@@ -385,7 +369,7 @@ VOID LogCurrentLoggedInUsers()
 
         if (hasLoggedInUser)
         {
-            OutputLogToCChokka(L"  Logged in users: " + loggedInUsers);
+            OutputLogToCChokka(L"  users: " + loggedInUsers);
         }
         else
         {
